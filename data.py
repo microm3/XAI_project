@@ -59,6 +59,11 @@ def image_preprocess():
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet req idk will we use that? otherwise change this
                          
 ])
+
+def image_unpreprocess(tensor):
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
+    return tensor * std + mean
     
 def tab_preprocess(df):
     combined_df = df
@@ -97,6 +102,36 @@ def sample(df, idx, all_types, tfm):
 
     return image, tab, label
 
+
+def test(idx = 0):
+    data = get_data()
+    
+    for image, stats, label in data:
+        print(image.shape) 
+        print(stats.shape)  
+        print(label.shape)  
+        break
+
+    image, stats, label = data[idx]
+    types = deencode_types()
+    image = image_unpreprocess(image)
+    #test image, YES I LEARNED FROM MY MISTAKES
+    plt.imshow(F.to_pil_image(image))
+    plt.axis('off')
+    
+    plt.title(f"Types: {', '.join([t for i, t in enumerate(types) if label[i] == 1])}")
+    plt.savefig("test.png")
+
+    #test stat
+    print("Scaled stats (first 10):", np.round(stats[:10].numpy(), 3))
+
+"""
+Main call function
+returns data in form of (image_tensor, stats_tensor, label_tensor) list (for now)
+The types are kinda stupid, asked chatgpt how to do it, got like one hot vector thing but now you need deencode types to like get the types so maybe we need to change that or make an easier map
+
+"""
+
 #no idea what format do we want as output?
 def get_data():
     df = create_or_load_dataframe()
@@ -110,28 +145,7 @@ def get_data():
         image, stats, label = sample(df, idx, all_types, image_preprocess())
         data.append((image, stats, label))
 
-    return data  #(image_tensor, stats_tensor, label_tensor)
+    return data 
 
 
-def test(idx = 0):
-    data = get_data()
-    
-    for image, stats, label in data:
-        print(image.shape) 
-        print(stats.shape)  
-        print(label.shape)  
-        break
-
-    image, stats, label = data[idx]
-    types = deencode_types()
-    #test image, YES I LEARNED FROM MY MISTAKES
-    plt.imshow(F.to_pil_image(image))
-    plt.axis('off')
-    
-    plt.title(f"Types: {', '.join([t for i, t in enumerate(types) if label[i] == 1])}")
-    plt.savefig("test.png")
-
-    #test stat
-    print("stats:", stats[:10])
-    
 test()
