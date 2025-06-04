@@ -7,11 +7,10 @@ import numpy as np
 import joblib
 import torch
 from PIL import Image
-import matplotlib.pyplot as plt
-import torchvision.transforms.functional as F
 import re
 from torch.utils.data import Dataset
 from torch.utils.data import random_split
+from overlap_analysis import create_overlap_analysis_csv
 
 def normalize(name):
     return re.sub(r'[\s\-_]', '', name.lower())
@@ -54,28 +53,31 @@ def create_or_load_dataframe():
         pokemon_folder = os.path.join(image_root, folder_name)
 
         for fname in os.listdir(pokemon_folder):
-            if fname.lower().endswith(".png"):
-                image_path = os.path.join(pokemon_folder, fname)
+            #fairly certains theres only pngs
+            if fname.lower().endswith((".png")):
+                full_image_path = os.path.join(pokemon_folder, fname)
+
                 dataset.append({
-                    "image_path": image_path,
+                    "image_path": full_image_path,
                     "type1": row["type1"],
                     "type2": row["type2"],
+                    #copy everything except the non numerical stuff
+                    # TODO was the dropping of non numerical stuff for now, and we need to one-hot encode, or was it for a reason?
                     "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"]).items()}
-
                 })
 
+    create_overlap_analysis_csv(df, image_root)
 
     combined_df = pd.DataFrame(dataset)
     combined_df.to_pickle(pickle_path)  #pickleee
     return combined_df
 
-    
+# TODO should look into whether white/black background needs to be
 def image_preprocess():
     return transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet req idk will we use that? otherwise change this
-                         
 ])
 
 def image_unpreprocess(tensor):
@@ -126,34 +128,10 @@ def sample(df, idx, all_types, tfm):
 
     return image, tab, label
 
-
-def test(idx = 0):
-    data = get_data()
-    
-    for image, stats, label in data:
-        print(image.shape) 
-        print(stats.shape)  
-        print(label.shape)  
-        break
-
-    image, stats, label = data[idx]
-    types = deencode_types()
-    image = image_unpreprocess(image)
-    #test image, YES I LEARNED FROM MY MISTAKES
-    plt.imshow(F.to_pil_image(image))
-    plt.axis('off')
-    
-    plt.title(f"Types: {', '.join([t for i, t in enumerate(types) if label[i] == 1])}")
-    plt.savefig("test.png")
-
-    #test stat
-    print("Scaled stats (first 10):", np.round(stats[:10].numpy(), 3))
-
 """
 Main call function
 returns data in form of (image_tensor, stats_tensor, label_tensor) list (for now)
 The types are kinda stupid, asked chatgpt how to do it, got like one hot vector thing but now you need deencode types to like get the types so maybe we need to change that or make an easier map
-
 """
 
 #no idea what format do we want as output?
@@ -181,8 +159,6 @@ class Pokemon(Dataset):
     def __getitem__(self, idx):
         image, stats, label = self.data[idx]
         return image, stats, label
-
-test()
 
 def get_dataset():
     data = get_data()
