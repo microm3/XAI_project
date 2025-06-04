@@ -9,6 +9,20 @@ import torch
 from PIL import Image
 import matplotlib.pyplot as plt
 import torchvision.transforms.functional as F
+import re
+
+def normalize(name):
+    return re.sub(r'[\s\-_]', '', name.lower())
+
+def clean_stat(val):
+    if isinstance(val, str):
+        #sometimes python is shit
+        match = re.search(r'\d+', val)
+        if match:
+            return float(match.group(0))
+        else:
+            return 0.0 
+    return float(val)
 
 def create_or_load_dataframe():
     pickle_path = "combined_dataset.pkl"
@@ -16,34 +30,36 @@ def create_or_load_dataframe():
         return pd.read_pickle(pickle_path)
 
     csv_path = "pokemon.csv"
-    image_path = "pokemon_sprites"
     df = pd.read_csv(csv_path)
 
     #normalize names just in case
-    df['name'] = df['name'].str.lower().str.replace(" ", "").str.replace("-", "")
+    df['name'] = df['name'].apply(normalize)
+    #df['name'] = df['name'].str.lower()
+    #.str.replace(" ", "").str.replace("-", "")
+
+    image_root = "pokemon_sprites/"
+    available_folders = {normalize(folder): folder for folder in os.listdir(image_root) if os.path.isdir(os.path.join(image_root, folder))}
 
     dataset = []
 
     for _, row in df.iterrows():
-        #join images with name on name
-        pokemon_name = row['name']
-        pokemon_folder = os.path.join(image_path, pokemon_name)
-        
-        #there are i think less stats then images but this was the biggest stats i could find
-        if not os.path.isdir(pokemon_folder):
-            print(f"missing {pokemon_name}")
+        pokemon_name = row['name']  # already normalized
+        if pokemon_name not in available_folders:
+            print(f"Missing: {pokemon_name}")
             continue
 
+        folder_name = available_folders[pokemon_name]
+        pokemon_folder = os.path.join(image_root, folder_name)
+
         for fname in os.listdir(pokemon_folder):
-            #fairly certains theres only pngs
-            if fname.lower().endswith((".png")):
+            if fname.lower().endswith(".png"):
                 image_path = os.path.join(pokemon_folder, fname)
                 dataset.append({
                     "image_path": image_path,
                     "type1": row["type1"],
                     "type2": row["type2"],
-                    #copy everything except the non numerical stuff
-                    "stats": row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"]).to_dict()
+                    "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"]).items()}
+
                 })
 
 
@@ -64,14 +80,20 @@ def image_unpreprocess(tensor):
     mean = torch.tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
     return tensor * std + mean
-    
+
+
+#got fucking damnit the stats were strings :() so it set them all to 0 without complaining...... types in python fun
 def tab_preprocess(df):
     combined_df = df
-    stats_matrix = np.stack([list(s.values()) for s in combined_df['stats']])
+    stats_matrix = np.stack([[v for v in s.values()] for s in combined_df['stats']])
+
+    print("Unique stat rows:", np.unique(stats_matrix, axis=0).shape[0])
+    print(stats_matrix[0])
     #chatgpt told me this is a thing
     scaler = StandardScaler()
     scaled_stats = scaler.fit_transform(stats_matrix)
-    combined_df["scaled_stats"] = list(scaled_stats)
+    combined_df["scaled_stats"] = [row for row in scaled_stats]
+    print(scaled_stats[0])
     #seems usefull to save
     joblib.dump(scaler, "tabular_scaler.pkl")
     return combined_df
