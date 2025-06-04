@@ -10,6 +10,8 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import torchvision.transforms.functional as F
 import re
+from torch.utils.data import Dataset
+from torch.utils.data import random_split
 
 def normalize(name):
     return re.sub(r'[\s\-_]', '', name.lower())
@@ -169,5 +171,28 @@ def get_data():
 
     return data 
 
+class Pokemon(Dataset):
+    def __init__(self, data):
+        self.data = data
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        image, stats, label = self.data[idx]
+        return image, stats, label
 
 test()
+
+def get_dataset():
+    data = get_data()
+    dataset = Pokemon(data)
+
+    train_size = int(0.8 * len(dataset))
+    train_ds, test_ds = random_split(dataset, [train_size, len(dataset) - train_size])
+
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=32)
+    
+    return train_loader, test_loader
+
