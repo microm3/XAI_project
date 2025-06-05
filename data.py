@@ -59,10 +59,16 @@ def create_or_load_dataframe():
 
                 dataset.append({
                     "image_path": full_image_path,
+                    # TODO look into multi-hot encoding of types or one-hot encoding? 
+                
                     "type1": row["type1"],
                     "type2": row["type2"],
+                    
+                    # TODO remove the against_ columns. 
                     #copy everything except the non numerical stuff
-                    # TODO was the dropping of non numerical stuff for now, and we need to one-hot encode, or was it for a reason?
+                    
+                    
+                    # TODO abilities is not included (for now), either include later or comment in report on why it was not.
                     "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"]).items()}
                 })
 
@@ -72,7 +78,7 @@ def create_or_load_dataframe():
     combined_df.to_pickle(pickle_path)  #pickleee
     return combined_df
 
-# TODO should look into whether white/black background needs to be
+# TODO use white background for pngs without background
 def image_preprocess():
     return transforms.Compose([
     transforms.Resize((224, 224)),
