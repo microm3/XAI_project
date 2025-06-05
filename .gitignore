@@ -174,3 +174,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# add pkl files for now, quick to generate and noisy in diffs
+tabular_scaler.pkl
+combined_dataset.pkl 
