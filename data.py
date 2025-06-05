@@ -78,13 +78,25 @@ def create_or_load_dataframe():
     combined_df.to_pickle(pickle_path)  #pickleee
     return combined_df
 
-# TODO use white background for pngs without background
+
+def add_white_background(image):
+    if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+        background = Image.new('RGB', image.size, (255, 255, 255))
+        if image.mode == 'P':
+            image = image.convert('RGBA')
+        background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+        return background
+    else:
+        return image.convert('RGB')
+
 def image_preprocess():
     return transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet req idk will we use that? otherwise change this
-])
+        # add white background for pngs without background (otherwise they get assigned a black background)
+        transforms.Lambda(add_white_background),
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet normalization
+    ])
 
 def image_unpreprocess(tensor):
     mean = torch.tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
@@ -126,7 +138,8 @@ def deencode_types():
 def sample(df, idx, all_types, tfm):
     row = df.iloc[idx]
 
-    image = Image.open(row["image_path"]).convert("RGB")
+    image = Image.open(row["image_path"])
+    
     image = tfm(image)
 
     tab = torch.tensor(row["scaled_stats"], dtype=torch.float32)

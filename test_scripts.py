@@ -5,7 +5,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import torchvision.transforms.functional as F
 import random
-from data import get_data, image_unpreprocess, deencode_types
+from data import get_data, image_unpreprocess, deencode_types, add_white_background
 
 DO_SINGLE_IMAGE_ORIGINAL_TEST = True
 DO_IMAGE_WITH_STATS_TEST = True
@@ -55,9 +55,11 @@ def print_images_with_stats(number_of_images = 10):
     
         df_combined = pd.read_pickle("combined_dataset.pkl")
         image_path = df_combined.iloc[index]['image_path']
-        original_image = Image.open(image_path).convert("RGB")
+        original_image = add_white_background(Image.open(image_path))
     
+        # processed_image_display = image_unpreprocess(image)
         processed_image_display = image
+
         
         fig = plt.figure(figsize=(24, 12))
         
