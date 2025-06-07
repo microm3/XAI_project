@@ -64,12 +64,10 @@ def create_or_load_dataframe():
                     "type1": row["type1"],
                     "type2": row["type2"],
                     
-                    # TODO remove the against_ columns. 
-                    #copy everything except the non numerical stuff
-                    
+                    #copy everything except the non numerical stuff                    
                     
                     # TODO abilities is not included (for now), either include later or comment in report on why it was not.
-                    "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"]).items()}
+                    "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"] + [col for col in row.index if col.startswith("against_")]).items()}
                 })
 
     create_overlap_analysis_csv(df, image_root)
