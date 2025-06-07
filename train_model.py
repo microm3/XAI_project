@@ -7,8 +7,9 @@ from data import get_dataset
 from data import deencode_types, image_unpreprocess
 import matplotlib.pyplot as plt
 
+TAB_DIM = 17
 #i really hope im doing something correct with this
-def build_model(tab_dim=17): #might change
+def build_model(tab_dim=TAB_DIM): #might change
     #MobileNetV2 but remove the last layer # this is a thing i learned in the datascience course is pretty cool was super confused bout it at first lol
     cnn = models.mobilenet_v2(pretrained=True)
     cnn.classifier = nn.Identity()
@@ -38,7 +39,12 @@ def build_model(tab_dim=17): #might change
 
 
 def train():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     
 
     train_loader, test_loader = get_dataset()
@@ -124,9 +130,14 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
 
 
 #this being a multimodal model makes loading a bit harder 
-def load_model(tab_dim=35, path='pokemon_model.pt', device=None):
+def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
 
     #do empty model
     cnn, tab_net, classifier = build_model(tab_dim)
@@ -165,7 +176,12 @@ def show_predictions(device=None, num_images=6):
     cnn, tab_net, classifier = load_model()
 
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
     
     all_types = deencode_types()  # list of type names in order
     cnn.to(device).eval()
@@ -209,5 +225,3 @@ def show_predictions(device=None, num_images=6):
     plt.tight_layout()
     plt.savefig("pred_example.png")
 
-
-show_predictions()
