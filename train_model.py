@@ -8,7 +8,7 @@ from data import deencode_types, image_unpreprocess
 import matplotlib.pyplot as plt
 
 #i really hope im doing something correct with this
-def build_model(tab_dim=35): #might change
+def build_model(tab_dim=17): #might change
     #MobileNetV2 but remove the last layer # this is a thing i learned in the datascience course is pretty cool was super confused bout it at first lol
     cnn = models.mobilenet_v2(pretrained=True)
     cnn.classifier = nn.Identity()
