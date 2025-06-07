@@ -8,7 +8,7 @@ import random
 from data import get_data, image_unpreprocess, deencode_types, add_white_background
 
 DO_SINGLE_IMAGE_ORIGINAL_TEST = True
-DO_IMAGE_WITH_STATS_TEST = True
+DO_IMAGE_WITH_STATS_TEST = False
 
 def test(idx = 0):
     data = get_data()
@@ -21,13 +21,16 @@ def test(idx = 0):
 
     image, stats, label = data[idx]
     types = deencode_types()
+
+    num_types = len(types)
+    print(f"number of types are: ", num_types)
     image = image_unpreprocess(image)
     #test image, YES I LEARNED FROM MY MISTAKES
     plt.imshow(F.to_pil_image(image))
     plt.axis('off')
     
     plt.title(f"Types: {', '.join([t for i, t in enumerate(types) if label[i] == 1])}")
-    plt.savefig("test.png")
+    #plt.savefig("test.png")
 
     #test stat
     print("Scaled stats (first 10):", np.round(stats[:10].numpy(), 3))
@@ -112,7 +115,7 @@ def print_images_with_stats(number_of_images = 10):
         ax3.legend(handles=legend_elements, loc='lower right')
         
         plt.tight_layout()
-        plt.savefig(f"summary_images/{pokemon_name}_{i+1}_index_{index}.png", dpi=150, bbox_inches='tight')
+        #plt.savefig(f"summary_images/{pokemon_name}_{i+1}_index_{index}.png", dpi=150, bbox_inches='tight')
         plt.close()
 
 

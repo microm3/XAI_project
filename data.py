@@ -114,6 +114,7 @@ def tab_preprocess(df):
     #chatgpt told me this is a thing
     scaler = StandardScaler()
     scaled_stats = scaler.fit_transform(stats_matrix)
+    scaled_stats = np.nan_to_num(scaled_stats, nan=0.0, posinf=0.0, neginf=0.0)
     combined_df["scaled_stats"] = [row for row in scaled_stats]
     print(scaled_stats[0])
     #seems usefull to save
@@ -160,7 +161,7 @@ def get_data():
 
     #make type list
     all_types = sorted(set(df['type1']) | set(df['type2'].dropna()))
-
+    print(f"tab dim is : ", len(df["scaled_stats"].iloc[0]))
     data = []
     for idx in range(len(df)):
         image, stats, label = sample(df, idx, all_types, image_preprocess())
