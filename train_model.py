@@ -124,7 +124,7 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
 
 
 #this being a multimodal model makes loading a bit harder 
-def load_model(tab_dim, path='pokemon_model.pt', device=None):
+def load_model(tab_dim=35, path='pokemon_model.pt', device=None):
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -210,4 +210,4 @@ def show_predictions(device=None, num_images=6):
     plt.savefig("pred_example.png")
 
 
-    show_predictions()
+show_predictions()
