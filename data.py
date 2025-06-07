@@ -33,7 +33,9 @@ def create_or_load_dataframe():
     csv_path = "pokemon.csv"
     df = pd.read_csv(csv_path)
 
-    #normalize names just in case
+    all_types = sorted(set(df['type1']) | set(df['type2'].dropna()))
+    
+    # normalize names just in case
     df['name'] = df['name'].apply(normalize)
     #df['name'] = df['name'].str.lower()
     #.str.replace(" ", "").str.replace("-", "")
@@ -53,22 +55,21 @@ def create_or_load_dataframe():
         pokemon_folder = os.path.join(image_root, folder_name)
 
         for fname in os.listdir(pokemon_folder):
-            #fairly certains theres only pngs
-            if fname.lower().endswith((".png")):
-                full_image_path = os.path.join(pokemon_folder, fname)
+            full_image_path = os.path.join(pokemon_folder, fname)
 
-                dataset.append({
-                    "image_path": full_image_path,
-                    # TODO look into multi-hot encoding of types or one-hot encoding? 
+            dataset.append({
+                "image_path": full_image_path,
                 
-                    "type1": row["type1"],
-                    "type2": row["type2"],
-                    
-                    #copy everything except the non numerical stuff                    
-                    
-                    # TODO abilities is not included (for now), either include later or comment in report on why it was not.
-                    "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"] + [col for col in row.index if col.startswith("against_")]).items()}
-                })
+                # store encoded types in dataframe, instead of encoding for each sample
+                "encoded_types": encode_types(row["type1"], row["type2"], all_types),
+                
+                # keep raw types for reference/debugging if needed
+                "type1": row["type1"],
+                "type2": row["type2"],
+                
+                # TODO abilities is not included (for now), either include later or comment in report on why it was not.
+                "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"] + [col for col in row.index if col.startswith("against_")]).items()}
+            })
 
     create_overlap_analysis_csv(df, image_root)
 
@@ -134,7 +135,7 @@ def deencode_types():
                    set(pd.read_pickle("combined_dataset.pkl")["type2"].dropna()))
 
 #samples a single image + types + stats
-def sample(df, idx, all_types, tfm):
+def get_sample_by_idx(df, idx, tfm):
     row = df.iloc[idx]
 
     image = Image.open(row["image_path"])
@@ -142,7 +143,7 @@ def sample(df, idx, all_types, tfm):
     image = tfm(image)
 
     tab = torch.tensor(row["scaled_stats"], dtype=torch.float32)
-    label = encode_types(row["type1"], row["type2"], all_types)
+    label = row["encoded_types"]
 
     return image, tab, label
 
@@ -157,12 +158,10 @@ def get_data():
     df = create_or_load_dataframe()
     df = tab_preprocess(df)
 
-    #make type list
-    all_types = sorted(set(df['type1']) | set(df['type2'].dropna()))
     print(f"tab dim is : ", len(df["scaled_stats"].iloc[0]))
     data = []
     for idx in range(len(df)):
-        image, stats, label = sample(df, idx, all_types, image_preprocess())
+        image, stats, label = get_sample_by_idx(df, idx, image_preprocess())
         data.append((image, stats, label))
 
     return data 
