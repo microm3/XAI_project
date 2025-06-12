@@ -160,7 +160,7 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     return cnn, tab_net, classifier
 
 
-train()
+#train()
 
 def show_predictions(device=None, num_images=6):
     """
