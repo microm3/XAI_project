@@ -7,6 +7,8 @@ from data import get_dataset
 from data import deencode_types, image_unpreprocess
 import matplotlib.pyplot as plt
 
+
+train_loader, test_loader = get_dataset()
 TAB_DIM = 17
 #i really hope im doing something correct with this
 def build_model(tab_dim=TAB_DIM): #might change
@@ -46,9 +48,6 @@ def train():
     else:
         device = torch.device("cpu")
     
-
-    train_loader, test_loader = get_dataset()
-    
     #some useful data maybe
     sample_img, sample_tab, sample_label = next(iter(train_loader))[0][0], next(iter(train_loader))[1][0], next(iter(train_loader))[2][0]
     tab_dim = sample_tab.shape[0]
@@ -68,7 +67,11 @@ def train():
 
     
     #training, sigmoid + binary cross-entropy for each type
-    num_epochs = 5
+    num_epochs = 1000
+    best_acc = 0
+    stagnant_epochs = 0
+    acc_list = []
+    epoch_list = []
 
     for epoch in range(num_epochs):
         cnn.train()
@@ -97,11 +100,33 @@ def train():
         assert not torch.isnan(labels).any(), "labels has the NaN"
         print(f"epoch {epoch+1}, has loss: {running_loss / len(train_loader):.4f}")
 
+        if epoch % 5 == 0:
+                acc = evaluate(cnn, tab_net, classifier, test_loader, device)
+                acc_list.append(acc)
+                epoch_list.append(epoch)
 
-        evaluate(cnn, tab_net, classifier, test_loader, device)
+                if acc > best_acc:
+                    best_acc = acc
+                    stagnant_epochs = 0
+                else:
+                    stagnant_epochs += 5
+
+                if stagnant_epochs >= 30:
+                    print("Early stopping triggered.")
+                    break
+        
+    plt.plot(epoch_list, acc_list, marker='o')
+    plt.title('Validation Accuracy over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    plt.savefig('accuracy_curve_comb.png')
 
     torch.save({'cnn_state_dict': cnn.state_dict(),'tab_net_state_dict': tab_net.state_dict(),'classifier_state_dict': classifier.state_dict(),}, 'pokemon_model.pt')
 
+
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 #Accuracy is how well it does for guessing both types
 def evaluate(cnn, tab_net, classifier, test_loader, device):
 
@@ -109,9 +134,8 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
     tab_net.eval()
     classifier.eval()
 
-    total = 0
-    correct = 0
-
+    all_preds = []
+    all_labels = []
     with torch.no_grad():
         for images, stats, labels in test_loader:
             images, stats, labels = images.to(device), stats.to(device), labels.to(device)
@@ -122,11 +146,32 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
             outputs = classifier(combined)
 
             #logits to predicted classes
-            preds = (torch.sigmoid(outputs) > 0.5).float()
-            correct += (preds == labels).float().mean().item()
-            total += 1
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).float()
 
-    print(f"accuracy: {correct / total:.4f}")
+            all_preds.append(preds.cpu())
+            all_labels.append(labels.cpu())
+
+    all_preds = torch.cat(all_preds).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+
+    avg_type = 'binary' if all_labels.shape[1] == 1 or len(all_labels.shape) == 1 else 'macro'
+
+
+    label_accuracy = (all_preds == all_labels).sum() / all_labels.size
+    print(f"Per-label accuracy: {label_accuracy:.4f}")
+
+    print(f"Accuracy:  {accuracy_score(all_labels, all_preds):.4f}")
+    print(f"Precision: {precision_score(all_labels, all_preds, average=avg_type):.4f}")
+    print(f"Recall:    {recall_score(all_labels, all_preds, average=avg_type):.4f}")
+    print(f"F1-score:  {f1_score(all_labels, all_preds, average=avg_type):.4f}")
+
+    try:
+        print(f"AUC-ROC:   {roc_auc_score(all_labels, all_preds, average=avg_type):.4f}")
+    except ValueError:
+        print("AUC-ROC:   Not defined (possibly only one class present)")
+
+    return accuracy_score(all_labels, all_preds)
 
 
 #this being a multimodal model makes loading a bit harder 
@@ -160,7 +205,7 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     return cnn, tab_net, classifier
 
 
-#train()
+train()
 
 def show_predictions(device=None, num_images=6):
     """
