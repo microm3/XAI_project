@@ -171,7 +171,7 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
     except ValueError:
         print("AUC-ROC:   Not defined (possibly only one class present)")
 
-    return accuracy_score(all_labels, all_preds)
+    #return accuracy_score(all_labels, all_preds)
 
 
 #this being a multimodal model makes loading a bit harder 
@@ -205,7 +205,9 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     return cnn, tab_net, classifier
 
 
-train()
+#train()
+cnn, tab_net, classifier = load_model()
+evaluate(cnn, tab_net, classifier, test_loader, torch.device("cuda"))
 
 def show_predictions(device=None, num_images=6):
     """
