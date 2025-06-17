@@ -12,6 +12,15 @@ from torch.utils.data import Dataset
 from torch.utils.data import random_split
 from overlap_analysis import create_overlap_analysis_csv
 
+# refactored to be used in shap as well - and not risk "dropping" different ones
+def get_excluded_columns():
+    df_sample = pd.read_csv('pokemon.csv')
+    
+    excluded = ["name", "type1", "type2", "japanese_name", "classfication", "abilities"]    
+    against_cols = [col for col in df_sample.columns if col.startswith("against_")]
+    
+    return excluded + against_cols
+
 def normalize(name):
     return re.sub(r'[\s\-_]', '', name.lower())
 
@@ -37,8 +46,6 @@ def create_or_load_dataframe():
     
     # normalize names just in case
     df['name'] = df['name'].apply(normalize)
-    #df['name'] = df['name'].str.lower()
-    #.str.replace(" ", "").str.replace("-", "")
 
     image_root = "pokemon_sprites/"
     available_folders = {normalize(folder): folder for folder in os.listdir(image_root) if os.path.isdir(os.path.join(image_root, folder))}
@@ -59,6 +66,7 @@ def create_or_load_dataframe():
 
             dataset.append({
                 "image_path": full_image_path,
+                "pokemon_name": pokemon_name,  # ADD THIS - for proper Pokemon-based splitting
                 
                 # store encoded types in dataframe, instead of encoding for each sample
                 "encoded_types": encode_types(row["type1"], row["type2"], all_types),
@@ -68,7 +76,7 @@ def create_or_load_dataframe():
                 "type2": row["type2"],
                 
                 # TODO abilities is not included (for now), either include later or comment in report on why it was not.
-                "stats": {k: clean_stat(v) for k, v in row.drop(["name", "type1", "type2", "japanese_name", "classfication", "abilities"] + [col for col in row.index if col.startswith("against_")]).items()}
+                "stats": {k: clean_stat(v) for k, v in row.drop(get_excluded_columns()).items()}
             })
 
     create_overlap_analysis_csv(df, image_root)
@@ -108,14 +116,14 @@ def tab_preprocess(df):
     combined_df = df
     stats_matrix = np.stack([[v for v in s.values()] for s in combined_df['stats']])
 
-    print("Unique stat rows:", np.unique(stats_matrix, axis=0).shape[0])
-    print(stats_matrix[0])
+    # print("Unique stat rows:", np.unique(stats_matrix, axis=0).shape[0])
+    # print(stats_matrix[0])
     #chatgpt told me this is a thing
     scaler = StandardScaler()
     scaled_stats = scaler.fit_transform(stats_matrix)
     scaled_stats = np.nan_to_num(scaled_stats, nan=0.0, posinf=0.0, neginf=0.0)
     combined_df["scaled_stats"] = [row for row in scaled_stats]
-    print(scaled_stats[0])
+    # print(scaled_stats[0])
     #seems usefull to save
     joblib.dump(scaler, "tabular_scaler.pkl")
     return combined_df
@@ -158,7 +166,7 @@ def get_data():
     df = create_or_load_dataframe()
     df = tab_preprocess(df)
 
-    print(f"tab dim is : ", len(df["scaled_stats"].iloc[0]))
+    # print(f"tab dim is : ", len(df["scaled_stats"].iloc[0]))
     data = []
     for idx in range(len(df)):
         image, stats, label = get_sample_by_idx(df, idx, image_preprocess())
@@ -177,15 +185,82 @@ class Pokemon(Dataset):
         image, stats, label = self.data[idx]
         return image, stats, label
 
+# version that splits by Pokemon, not by individual images
+# def get_dataset():
+#     df = create_or_load_dataframe()
+#     df = tab_preprocess(df)
+    
+#     unique_pokemon = df['pokemon_name'].unique()
+    
+#     # split by pokemon names
+#     torch.manual_seed(42)
+#     pokemon_indices = torch.randperm(len(unique_pokemon))
+#     train_size = int(0.8 * len(unique_pokemon))
+    
+#     train_pokemon = set(unique_pokemon[pokemon_indices[:train_size]])
+#     test_pokemon = set(unique_pokemon[pokemon_indices[train_size:]])
+    
+#     print(f"Train Pokemon: {len(train_pokemon)}, Test Pokemon: {len(test_pokemon)}")
+    
+#     train_data = []
+#     test_data = []
+    
+#     for idx in range(len(df)):
+#         image, stats, label = get_sample_by_idx(df, idx, image_preprocess())
+#         pokemon_name = df.iloc[idx]['pokemon_name']
+        
+#         if pokemon_name in train_pokemon:
+#             train_data.append((image, stats, label))
+#         else:
+#             test_data.append((image, stats, label))
+    
+#     train_dataset = Pokemon(train_data)
+#     test_dataset = Pokemon(test_data)
+    
+#     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+#     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
+    
+#     return train_loader, test_loader
+
+# old version. potential data leakage
 def get_dataset():
     data = get_data()
     dataset = Pokemon(data)
 
+    # Use fixed seed for reproducible splits
+    torch.manual_seed(42)
     train_size = int(0.8 * len(dataset))
     train_ds, test_ds = random_split(dataset, [train_size, len(dataset) - train_size])
 
     train_loader = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=32)
     
-    return train_loader, test_loader
+    return train_loader, test_loader 
+
+
+
+"""
+so the new code did this to the tabular data :🥲
+
+Early stopping triggered.
+Saved tabular model to pokemon_model_tabular.pt
+Accuracy:  0.1178
+Precision: 0.3854
+Recall:    0.2240
+F1-score:  0.2662
+AUC-ROC:   0.5954
+Using MPS
+"""
+
+"""
+and did this to the image thing: 
+
+Early stopping triggered.
+Per-label accuracy: 0.9165
+Accuracy:  0.1778
+Precision: 0.4408
+Recall:    0.3053
+F1-score:  0.3454
+"""
+
 
