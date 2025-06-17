@@ -10,6 +10,16 @@ import matplotlib.pyplot as plt
 train_loader, test_loader = get_dataset()
 
 TAB_DIM = 17
+
+def get_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    return device
+
 #i really hope im doing something correct with this
 def build_model(tab_dim=TAB_DIM): #might change
     #MobileNetV2 but remove the last layer # this is a thing i learned in the datascience course is pretty cool was super confused bout it at first lol
@@ -41,18 +51,7 @@ def build_model(tab_dim=TAB_DIM): #might change
 
 
 def train():
-    print("CUDA available:", torch.cuda.is_available())
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print("using cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-        print("not using cuda")
-    
-
-    
+    device = get_device()
     
     #some useful data maybe
     sample_img, sample_tab, sample_label = next(iter(train_loader))[0][0], next(iter(train_loader))[1][0], next(iter(train_loader))[2][0]
@@ -73,7 +72,7 @@ def train():
 
     
     #training, sigmoid + binary cross-entropy for each type
-    num_epochs = 1000
+    num_epochs = 120
     best_acc = 0
     stagnant_epochs = 0
     acc_list = []
@@ -183,20 +182,17 @@ def evaluate(cnn, classifier, test_loader, device):
     return accuracy_score(all_labels, all_preds)
 
 #this being a multimodal model makes loading a bit harder 
-def load_model(tab_dim=TAB_DIM, path='pokemon_model_images.pt', device='cuda'):
+def load_model(tab_dim=TAB_DIM, path='pokemon_model_images.pt', device=None):
     if device is None:
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+        device = get_device()
+    
+    print(f"Loading model to device: {device}")
 
     #do empty model
     cnn, tab_net, classifier = build_model(tab_dim)
 
-    #load the dicts
-    checkpoint = torch.load(path, map_location=device)
+    # use cpu first since both have that 
+    checkpoint = torch.load(path, map_location='cpu')
     cnn.load_state_dict(checkpoint['cnn_state_dict'])
     #tab_net.load_state_dict(checkpoint['tab_net_state_dict'])
     classifier.load_state_dict(checkpoint['classifier_state_dict'])
@@ -212,16 +208,30 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model_images.pt', device='cuda'):
     print("model loaded from save")
     return cnn, classifier
 
+if __name__ == "__main__":
+    train()
+    device = get_device()
+    cnn, classifier = load_model(device=device)
+    evaluate(cnn, classifier, test_loader, device)
 
-train()
-cnn, classifier = load_model()
-evaluate(cnn, classifier, test_loader, device="cuda")
+
 
 """
+old data code, without new split code and seed
 Per-label accuracy: 0.9435
 Accuracy:  0.3248
 Precision: 0.7861
 Recall:    0.3977
 F1-score:  0.5029
 AUC-ROC:   0.6930
+"""
+
+"""
+new data code, with seed
+Per-label accuracy: 0.9640
+Accuracy:  0.5777
+Precision: 0.8379
+Recall:    0.6895
+F1-score:  0.7504
+AUC-ROC:   0.8385
 """

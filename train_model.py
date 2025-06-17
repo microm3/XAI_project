@@ -10,6 +10,17 @@ import matplotlib.pyplot as plt
 
 train_loader, test_loader = get_dataset()
 TAB_DIM = 17
+
+def get_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    return device
+
+
 #i really hope im doing something correct with this
 def build_model(tab_dim=TAB_DIM): #might change
     #MobileNetV2 but remove the last layer # this is a thing i learned in the datascience course is pretty cool was super confused bout it at first lol
@@ -41,12 +52,7 @@ def build_model(tab_dim=TAB_DIM): #might change
 
 
 def train():
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = get_device()
     
     #some useful data maybe
     sample_img, sample_tab, sample_label = next(iter(train_loader))[0][0], next(iter(train_loader))[1][0], next(iter(train_loader))[2][0]
@@ -67,7 +73,7 @@ def train():
 
     
     #training, sigmoid + binary cross-entropy for each type
-    num_epochs = 1000
+    num_epochs = 150
     best_acc = 0
     stagnant_epochs = 0
     acc_list = []
@@ -128,8 +134,9 @@ def train():
 
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 #Accuracy is how well it does for guessing both types
-def evaluate(cnn, tab_net, classifier, test_loader, device):
-
+def evaluate(cnn, tab_net, classifier, test_loader, device = None):
+    if device is None:
+        device = get_device()
     cnn.eval()
     tab_net.eval()
     classifier.eval()
@@ -171,18 +178,13 @@ def evaluate(cnn, tab_net, classifier, test_loader, device):
     except ValueError:
         print("AUC-ROC:   Not defined (possibly only one class present)")
 
-    #return accuracy_score(all_labels, all_preds)
+    return accuracy_score(all_labels, all_preds)
 
 
 #this being a multimodal model makes loading a bit harder 
 def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     if device is None:
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+        device = get_device()
 
     #do empty model
     cnn, tab_net, classifier = build_model(tab_dim)
@@ -205,9 +207,14 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     return cnn, tab_net, classifier
 
 
-#train()
-cnn, tab_net, classifier = load_model()
-evaluate(cnn, tab_net, classifier, test_loader, torch.device("cuda"))
+if __name__ == "__main__":
+    # train()
+    cnn, tab_net, classifier = load_model(path='pokemon_model_old_without_seed.pt')
+    evaluate(cnn, tab_net, classifier, test_loader)
+    # not sure why device is passed as a hard coded argument here. Letting it be a nullable argument in case needed for Janine's computer.
+    # evaluate(cnn, tab_net, classifier, test_loader, torch.device("cuda"))
+
+
 
 def show_predictions(device=None, num_images=6):
     """
@@ -223,12 +230,7 @@ def show_predictions(device=None, num_images=6):
     cnn, tab_net, classifier = load_model()
 
     if device is None:
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+        device = get_device()
     
     all_types = deencode_types()  # list of type names in order
     cnn.to(device).eval()
@@ -274,3 +276,32 @@ def show_predictions(device=None, num_images=6):
 
 
 #show_predictions()
+
+
+
+
+"""
+old, but this one is a bit suspect.. 
+Per-label accuracy: 0.9943
+Accuracy:  0.9304
+Precision: 0.9779
+Recall:    0.9506
+F1-score:  0.9638
+AUC-ROC:   0.9743
+"""
+
+
+
+
+"""
+new data code, with seed
+it stopped early, but the accuracy is sh#t 
+
+Per-label accuracy: 0.9114
+Accuracy:  0.1996
+Precision: 0.4289
+Recall:    0.3228
+F1-score:  0.3473
+AUC-ROC:   0.6426
+"""
+

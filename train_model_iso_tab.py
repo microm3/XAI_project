@@ -9,6 +9,21 @@ import matplotlib.pyplot as plt
 TAB_DIM = None
 NUM_CLASSES = 18
 train_loader, test_loader = get_dataset()
+# MODEL_PATH = 'pokemon_model_tabular_old_without_seed.pt'
+MODEL_PATH = 'pokemon_model_tabular.pt'
+
+def get_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using CUDA")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using MPS")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU")
+    return device
+
 
 # Tabular-only model builder
 def build_model(tab_dim, num_classes):
@@ -35,19 +50,9 @@ def build_model(tab_dim, num_classes):
 # Training loop
 def train():
     # Device selection
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print("Using CUDA")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-        print("Using MPS")
-    else:
-        device = torch.device("cpu")
-        print("Using CPU")
+    device = get_device()
 
     # Load data (assumes get_dataset returns (imgs, stats, labels), ignore imgs)
- 
-
     # Infer dims
     _, sample_tab, sample_label = next(iter(train_loader))
     tab_dim = sample_tab.shape[1]
@@ -165,9 +170,9 @@ def evaluate(tab_net, classifier, test_loader, device):
     return accuracy_score(all_labels, all_preds)
 
 
-def load_model(path='pokemon_model_tabular.pt', device=None):
+def load_model(path=MODEL_PATH, device=None):
     if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = get_device()
     # We need to know tab_dim and num_classes; load dummy data
     train_loader, _ = get_dataset()
     _, sample_tab, sample_label = next(iter(train_loader))
@@ -183,9 +188,33 @@ def load_model(path='pokemon_model_tabular.pt', device=None):
     tab_net.eval()
     classifier.eval()
     print("Loaded tabular model from", path)
-    return tab_net, classifier
+    return tab_net, classifier, device
 
 
-train()
-tab_net, classifier = load_model()
-evaluate(tab_net, classifier, test_loader, device="cuda")
+if __name__ == "__main__":
+    device = get_device()
+    train()
+    tab_net, classifier, device = load_model()
+    evaluate(tab_net, classifier, test_loader, device)
+    
+    
+"""
+Loaded tabular model from pokemon_model_tabular_old_without_seed.pt
+Accuracy:  0.9942
+Precision: 0.9969
+Recall:    0.9977
+F1-score:  0.9972
+AUC-ROC:   0.9987
+"""
+
+
+"""
+new data code, with seed 
+Saved tabular model to pokemon_model_tabular.pt
+Accuracy:  0.9884
+Precision: 0.9946
+Recall:    0.9921
+F1-score:  0.9932
+AUC-ROC:   0.9958
+Using MPS
+"""
