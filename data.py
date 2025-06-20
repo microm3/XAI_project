@@ -238,7 +238,28 @@ def get_dataset():
     return train_loader, test_loader 
 
 
+from sklearn.manifold import TSNE
+import plotly.express as px
 
+def tsne():
+    data = get_dataset()
+    dataset = Pokemon(data)
+    
+    imgs, stats, labels = dataset
+    tsne = TSNE(n_components=18, random_state=42)
+    X_tsne = tsne.fit_transform(imgs)
+    tsne.kl_divergence_
+
+
+    fig = px.scatter(x=X_tsne[:, 0], y=X_tsne[:, 1], color=y)
+    fig.update_layout(
+        title="t-SNE visualization of Custom Classification dataset",
+        xaxis_title="First t-SNE",
+        yaxis_title="Second t-SNE",
+    )
+    fig.write_image("tsne.png")
+
+tsne()
 """
 so the new code did this to the tabular data :🥲
 

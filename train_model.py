@@ -51,7 +51,7 @@ def build_model(tab_dim=TAB_DIM): #might change
     return cnn, tab_net, classifier
 
 
-def train():
+def train(num_epochs=150):
     device = get_device()
     
     #some useful data maybe
@@ -73,7 +73,7 @@ def train():
 
     
     #training, sigmoid + binary cross-entropy for each type
-    num_epochs = 150
+    
     best_acc = 0
     stagnant_epochs = 0
     acc_list = []
@@ -135,6 +135,7 @@ def train():
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 #Accuracy is how well it does for guessing both types
 def evaluate(cnn, tab_net, classifier, test_loader, device = None):
+
     if device is None:
         device = get_device()
     cnn.eval()
@@ -178,6 +179,7 @@ def evaluate(cnn, tab_net, classifier, test_loader, device = None):
     except ValueError:
         print("AUC-ROC:   Not defined (possibly only one class present)")
 
+  
     return accuracy_score(all_labels, all_preds)
 
 
@@ -204,12 +206,13 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     classifier.eval()
 
     print("model loaded from save")
+    
     return cnn, tab_net, classifier
 
 
 if __name__ == "__main__":
-    # train()
-    cnn, tab_net, classifier = load_model(path='pokemon_model_old_without_seed.pt')
+    train(500)
+    cnn, tab_net, classifier = load_model()
     evaluate(cnn, tab_net, classifier, test_loader)
     # not sure why device is passed as a hard coded argument here. Letting it be a nullable argument in case needed for Janine's computer.
     # evaluate(cnn, tab_net, classifier, test_loader, torch.device("cuda"))
@@ -226,7 +229,7 @@ def show_predictions(device=None, num_images=6):
       device: torch.device (defaults to CUDA if available)
       num_images: how many examples to show
     """
-    train_loader, test_loader = get_dataset() #this is probably not correct but it works for testing it now
+    #train_loader, test_loader = get_dataset() #this is probably not correct but it works for testing it now
     cnn, tab_net, classifier = load_model()
 
     if device is None:
