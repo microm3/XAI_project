@@ -162,14 +162,19 @@ The types are kinda stupid, asked chatgpt how to do it, got like one hot vector 
 """
 
 #no idea what format do we want as output?
-def get_data():
+# NOTE PRIVATE 
+def get_data(image_transform=None):
     df = create_or_load_dataframe()
     df = tab_preprocess(df)
+
+    # use "old", default transform if none provided to not break old stuff
+    if image_transform is None:
+        image_transform = image_preprocess()
 
     # print(f"tab dim is : ", len(df["scaled_stats"].iloc[0]))
     data = []
     for idx in range(len(df)):
-        image, stats, label = get_sample_by_idx(df, idx, image_preprocess())
+        image, stats, label = get_sample_by_idx(df, idx, image_transform)
         data.append((image, stats, label))
 
     return data 
@@ -223,8 +228,9 @@ class Pokemon(Dataset):
 #     return train_loader, test_loader
 
 # old version. potential data leakage
-def get_dataset():
-    data = get_data()
+# NOTE PUBLIC
+def get_dataset(image_transform=None):
+    data = get_data(image_transform)
     dataset = Pokemon(data)
 
     # Use fixed seed for reproducible splits

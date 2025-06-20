@@ -1,26 +1,37 @@
 import torch
 from torchvision import transforms
 import numpy as np
+import colorsys
 from PIL import Image
-from collections import defaultdict
-from data import create_or_load_dataframe, tab_preprocess, get_sample_by_idx, Pokemon, add_white_background
-from train_model_iso_img import load_model
+from data import get_sample_by_idx, add_white_background, get_dataset
+from train_model_iso_img import load_model, evaluate
 import warnings
-import cv2
-import numpy as np        
-from util import type_names
 import os
+import matplotlib.pyplot as plt
 warnings.filterwarnings('ignore')
 
-# from 0-360 degrees
+
+# MODEL_PATH = 'pokemon_model_images_old_without_seed.pt'
+MODEL_PATH = 'pokemon_model_images.pt'
+
+# NOTE not pretty, but hard coding the grayscale accuracy for now, too lazy to import 
+GRAYSCALE_ACC =  0.2030
+
+# from 0-360 degrees, 30 degree intervals
 hue_shifts = {
     'original': 0,
-    'hue_shift_30': 30,      # e.g. red → orange
-    'hue_shift_60': 60,      # red → yellow
-    'hue_shift_120': 120,    # red → green
-    'hue_shift_180': 180,    # red → cyan (complementary)
-    'hue_shift_240': 240,    # red → blue
-    'hue_shift_300': 300     # red → purple
+    'hue_shift_30': 30, # e.g. red → orange
+    'hue_shift_60': 60,
+    'hue_shift_90': 90,
+    'hue_shift_120': 120,
+    'hue_shift_150': 150,
+    'hue_shift_180': 180,    
+    'hue_shift_210': 210,
+    'hue_shift_240': 240,
+    'hue_shift_270': 270,
+    'hue_shift_300': 300,
+    'hue_shift_330': 330,
+    'hue_shift_360': 360 # just to verify that 0 and 360 returns same result. whiiich led to a lot of debugging. 
 }
 
 def get_device():
@@ -32,10 +43,11 @@ def get_device():
         device = torch.device("cpu")
     return device
 
-# MODEL_PATH = 'pokemon_model_images_old_without_seed.pt'
-MODEL_PATH = 'pokemon_model_images.pt'
-
 def hue_shift_transform(hue_shift_degrees):
+    
+    # the below fanciness is because the original colour shift method didn´t return symmetric result :( And it took forever without the vector stuff 
+    
+    
     def adjust_hue(image):
         if torch.is_tensor(image):
             mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
@@ -44,15 +56,69 @@ def hue_shift_transform(hue_shift_degrees):
             image = torch.clamp(image, 0, 1)
             image = transforms.ToPILImage()(image)
         
-        img_array = np.array(image)
-        hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+        # Convert to numpy array and normalize to 0-1
+        img_array = np.array(image).astype(np.float32) / 255.0
         
-        # scale to use 360* hue
-        hue_shift_cv = int(hue_shift_degrees * 179 / 360)
-        hsv[:, :, 0] = (hsv[:, :, 0] + hue_shift_cv) % 180
+        # Vectorized RGB to HSV conversion
+        r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
         
-        rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-        return Image.fromarray(rgb)
+        maxc = np.maximum(r, np.maximum(g, b))
+        minc = np.minimum(r, np.minimum(g, b))
+        
+        # Value
+        v = maxc
+        
+        # Saturation
+        delta = maxc - minc
+        s = np.where(maxc == 0, 0, delta / maxc)
+        
+        # Hue
+        h = np.zeros_like(maxc)
+        mask = delta != 0
+        
+        # Red is max
+        mask_r = mask & (maxc == r)
+        h[mask_r] = ((g[mask_r] - b[mask_r]) / delta[mask_r]) % 6
+        
+        # Green is max
+        mask_g = mask & (maxc == g)
+        h[mask_g] = (b[mask_g] - r[mask_g]) / delta[mask_g] + 2
+        
+        # Blue is max
+        mask_b = mask & (maxc == b)
+        h[mask_b] = (r[mask_b] - g[mask_b]) / delta[mask_b] + 4
+        
+        h = h / 6.0  # Normalize to 0-1
+        
+        # Apply hue shift
+        h_shifted = (h + (hue_shift_degrees / 360.0)) % 1.0
+        
+        # Vectorized HSV to RGB conversion
+        h_i = (h_shifted * 6).astype(int)
+        f = h_shifted * 6 - h_i
+        p = v * (1 - s)
+        q = v * (1 - f * s)
+        t = v * (1 - (1 - f) * s)
+        
+        # Initialize output arrays
+        r_new = np.zeros_like(v)
+        g_new = np.zeros_like(v)
+        b_new = np.zeros_like(v)
+        
+        # Apply HSV to RGB conversion based on hue sector
+        idx = h_i % 6
+        r_new[idx == 0] = v[idx == 0]; g_new[idx == 0] = t[idx == 0]; b_new[idx == 0] = p[idx == 0]
+        r_new[idx == 1] = q[idx == 1]; g_new[idx == 1] = v[idx == 1]; b_new[idx == 1] = p[idx == 1]
+        r_new[idx == 2] = p[idx == 2]; g_new[idx == 2] = v[idx == 2]; b_new[idx == 2] = t[idx == 2]
+        r_new[idx == 3] = p[idx == 3]; g_new[idx == 3] = q[idx == 3]; b_new[idx == 3] = v[idx == 3]
+        r_new[idx == 4] = t[idx == 4]; g_new[idx == 4] = p[idx == 4]; b_new[idx == 4] = v[idx == 4]
+        r_new[idx == 5] = v[idx == 5]; g_new[idx == 5] = p[idx == 5]; b_new[idx == 5] = q[idx == 5]
+        
+        # Combine channels and convert back to uint8
+        shifted_img = np.stack([r_new, g_new, b_new], axis=2)
+        shifted_img = np.clip(shifted_img * 255, 0, 255).astype(np.uint8)
+        
+        return Image.fromarray(shifted_img)
     
     return transforms.Compose([
         transforms.Lambda(add_white_background),
@@ -62,36 +128,16 @@ def hue_shift_transform(hue_shift_degrees):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-def get_hue_shifted_dataset(hue_shift_degrees, filter_grayscale=True):
-    hue_transform = hue_shift_transform(hue_shift_degrees)
+
+def create_hue_shifted_dataloader(hue_shift_degrees):
+    if hue_shift_degrees == 0:
+        _, test_loader = get_dataset()
+    else:
+        hue_transform = hue_shift_transform(hue_shift_degrees)
+        _, test_loader = get_dataset(image_transform=hue_transform)
     
-    df = create_or_load_dataframe()
-    df = tab_preprocess(df)
-    
-    if filter_grayscale and hue_shift_degrees > 0:
-        df = df[~df['image_path'].apply(is_grayscale_image)].reset_index(drop=True)
-    
-    unique_pokemon = df['pokemon_name'].unique()
-    
-    torch.manual_seed(42)
-    pokemon_indices = torch.randperm(len(unique_pokemon))
-    train_size = int(0.8 * len(unique_pokemon))
-    
-    train_pokemon = set(unique_pokemon[pokemon_indices[:train_size]])
-    test_pokemon = set(unique_pokemon[pokemon_indices[train_size:]])
-    
-    test_data = []
-    
-    for idx in range(len(df)):
-        pokemon_name = df.iloc[idx]['pokemon_name']
-        if pokemon_name in test_pokemon:
-            image, stats, label = get_sample_by_idx(df, idx, hue_transform)
-            test_data.append((image, stats, label))
-    
-    test_dataset = Pokemon(test_data)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
-    
-    return test_loader, df
+    return test_loader
+
 
 def is_grayscale_image(image_path):
     img = Image.open(image_path)
@@ -129,78 +175,21 @@ def save_hue_shift_examples(df, output_dir="hue_shift_examples"):
         filepath = os.path.join(output_dir, filename)
         image_pil.save(filepath)
         
-def evaluate_per_type(cnn, classifier, test_loader, device, df):
-    cnn.eval()
-    classifier.eval()
-    
-    type_correct = defaultdict(int)
-    type_total = defaultdict(int)
-    all_predictions = []
-    all_labels = []
-    
-    with torch.no_grad():
-        for images, stats, labels in test_loader:
-            images = images.to(device)
-            stats = stats.to(device)
-            labels = labels.to(device)
-            
-            cnn_output = cnn(images)
-            predictions = classifier(cnn_output)
-            predicted_probs = torch.sigmoid(predictions)
-            predicted_labels = (predicted_probs > 0.5).float()
-            
-            all_predictions.extend(predicted_labels.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-            
-            # Per-type accuracy
-            for i in range(len(type_names)):
-                type_mask = labels[:, i] == 1  # Pokemon that have this type
-                if type_mask.sum() > 0:  # If any Pokemon in batch have this type
-                    type_correct[type_names[i]] += (predicted_labels[type_mask, i] == labels[type_mask, i]).sum().item()
-                    type_total[type_names[i]] += type_mask.sum().item()
-    
-    all_predictions = np.array(all_predictions)
-    all_labels = np.array(all_labels)
-    
-    # Per-label accuracy: each type prediction evaluated independently
-    per_label_accuracy = np.mean(all_predictions == all_labels)
-    
-    # Exact match: only correct if ALL types are predicted correctly for each Pokemon
-    exact_matches = np.all(all_predictions == all_labels, axis=1)
-    exact_match_accuracy = np.mean(exact_matches)
-    
-    # For type-specific analysis, per-label makes more sense
-    overall_accuracy = per_label_accuracy
-    
-    type_accuracies = {}
-    for type_name in type_names:
-        if type_total[type_name] > 0:
-            type_accuracies[type_name] = type_correct[type_name] / type_total[type_name]
-        else:
-            type_accuracies[type_name] = 0.0
-    
-    return overall_accuracy, exact_match_accuracy, type_accuracies
-
 def analyze_hue_dependency():
     device = get_device()
-    
-    df = create_or_load_dataframe()
-    df = tab_preprocess(df)
-    save_hue_shift_examples(df)
     
     cnn, classifier = load_model(path=MODEL_PATH, device=device)
     print(f"loaded model {MODEL_PATH}")
     
     results = {}
     
-    for shift_name, shift_degrees in hue_shifts.items():
-        test_loader, df = get_hue_shifted_dataset(shift_degrees)
-        per_label_acc, exact_match_acc, type_accs = evaluate_per_type(cnn, classifier, test_loader, device, df)
+    for shift_name, shift_degrees in hue_shifts.items():       
+        print(f"\nTesting {shift_name}:")
+        hue_shifted_loader = create_hue_shifted_dataloader(shift_degrees)
+        accuracy = evaluate(cnn, classifier, hue_shifted_loader, device)
         
         results[shift_name] = {
-            'per_label_accuracy': per_label_acc,
-            'exact_match_accuracy': exact_match_acc,
-            'type_accuracies': type_accs,
+            'accuracy': accuracy,
             'hue_shift': shift_degrees
         }
         
@@ -208,56 +197,92 @@ def analyze_hue_dependency():
     
     return results
 
+
 def generate_hue_analysis_report(results):
-    baseline_per_label = results['original']['per_label_accuracy']
-    baseline_exact_match = results['original']['exact_match_accuracy']
-    baseline_types = results['original']['type_accuracies']
+    baseline_accuracy = results['original']['accuracy']
     
     print(f"\nBASELINE (Original Images):")
-    print(f"Per-label Accuracy: {baseline_per_label:.4f}")
-    print(f"Exact Match Accuracy: {baseline_exact_match:.4f}")
+    print(f"Accuracy: {baseline_accuracy:.4f}")
     
-    print(f"\n{'Hue Shift':<15} {'Per-Label Acc':<12} {'Exact Match':<12} {'Per-Label Drop %':<15}")
-    print("-" * 70)
-    
-    for shift_name, data in results.items():
-        if shift_name == 'original':
-            continue
-            
-        per_label_drop = baseline_per_label - data['per_label_accuracy']
-        per_label_drop_pct = (per_label_drop / baseline_per_label) * 100
-        
-        print(f"{shift_name:<15} {data['per_label_accuracy']:<12.4f} {data['exact_match_accuracy']:<12.4f} {per_label_drop_pct:<15.1f}%")
-    
-    type_vulnerabilities = defaultdict(list)
-    
-    for shift_name, data in results.items():
-        if shift_name == 'original':
-            continue
-            
-        for type_name, acc in data['type_accuracies'].items():
-            if baseline_types[type_name] > 0:  # Only consider types with test samples
-                drop = baseline_types[type_name] - acc
-                drop_pct = (drop / baseline_types[type_name]) * 100 if baseline_types[type_name] > 0 else 0
-                type_vulnerabilities[type_name].append((shift_name, drop_pct))
-    
-    # Sort types by average vulnerability
-    avg_vulnerabilities = {}
-    for type_name, drops in type_vulnerabilities.items():
-        avg_drop = np.mean([drop for _, drop in drops])
-        avg_vulnerabilities[type_name] = avg_drop
-    
-    sorted_types = sorted(avg_vulnerabilities.items(), key=lambda x: x[1], reverse=True)
-    
-    print(f"\nMOST HUE-SENSITIVE POKEMON TYPES:")
-    print(f"{'Type':<12} {'Avg Drop %':<10} {'Most Vulnerable To'}")
+    print(f"\n{'Hue Shift':<15} {'Accuracy':<12} {'Drop %':<12}")
     print("-" * 45)
     
-    for type_name, avg_drop in sorted_types[:8]:  # Top 8 most vulnerable
-        worst_shift = max(type_vulnerabilities[type_name], key=lambda x: x[1])
-        print(f"{type_name:<12} {avg_drop:<10.1f} {worst_shift[0]} ({worst_shift[1]:.1f}%)")
+    for shift_name, data in results.items():
+        if shift_name == 'original':
+            continue
+            
+        accuracy_drop = baseline_accuracy - data['accuracy']
+        accuracy_drop_pct = (accuracy_drop / baseline_accuracy) * 100
+        
+        print(f"{shift_name:<15} {data['accuracy']:<12.4f} {accuracy_drop_pct:<12.1f}")
+
+
+def plot_hue_shift_results(results, plot_grayscal_acc=False):
+    hue_degrees = []
+    accuracies = []
+    
+    sorted_results = sorted(results.items(), key=lambda x: x[1]['hue_shift'])
+    
+    for shift_name, data in sorted_results:
+        hue_degrees.append(data['hue_shift'])
+        accuracies.append(data['accuracy'])
+    
+    plt.figure(figsize=(8, 4))
+    plt.plot(hue_degrees, accuracies, 'bo-', linewidth=2, markersize=8)
+    
+    if plot_grayscal_acc:
+        plt.axhline(y=GRAYSCALE_ACC, color='red', linestyle='--', linewidth=2)
+    
+    plt.xlabel('Hue Shift (degrees)', fontsize=14)
+    plt.ylabel('Accuracy', fontsize=14)
+    plt.title('Model Performance vs Hue Shift\n(Pokemon Type Classification)', fontsize=16, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=12)
+    
+    plt.xticks(hue_degrees, rotation=45)
+    
+    for i, (hue, acc) in enumerate(zip(hue_degrees, accuracies)):
+        plt.annotate(f'{acc:.3f}', (hue, acc), textcoords="offset points", 
+                    xytext=(0,10), ha='center', fontsize=10)
+    
+    all_values = accuracies + ([GRAYSCALE_ACC] if plot_grayscal_acc else [])
+    min_acc = min(all_values)
+    max_acc = max(all_values)
+    plt.ylim(min_acc - 0.05, max_acc + 0.05)
+    
+    plt.tight_layout()
+    plt.savefig(f'hue_shift_analysis_grayscale_{plot_grayscal_acc}.png', dpi=300, bbox_inches='tight')
+    
+if __name__ == "__main__":
+    # df = create_or_load_dataframe()
+    # df = tab_preprocess(df)
+    # save_hue_shift_examples(df)
+
+    results = analyze_hue_dependency()
+    
+    plot_hue_shift_results(results, plot_grayscal_acc=True)
+    plot_hue_shift_results(results, plot_grayscal_acc=False)
     
 
-if __name__ == "__main__":
-    analyze_hue_dependency()
-    
+
+"""
+new model with seed 
+
+BASELINE (Original Images):
+Accuracy: 0.5777
+
+Hue Shift       Accuracy     Drop %      
+---------------------------------------------
+hue_shift_30    0.3944       31.7        
+hue_shift_60    0.2042       64.7        
+hue_shift_90    0.1265       78.1        
+hue_shift_120   0.1230       78.7        
+hue_shift_150   0.1311       77.3        
+hue_shift_180   0.1381       76.1        
+hue_shift_210   0.1299       77.5        
+hue_shift_240   0.1253       78.3        
+hue_shift_270   0.1485       74.3        
+hue_shift_300   0.2599       55.0        
+hue_shift_330   0.4432       23.3        
+hue_shift_360   0.5800       -0.4     
+"""
