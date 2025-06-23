@@ -12,6 +12,12 @@ from torch.utils.data import Dataset
 from torch.utils.data import random_split
 from overlap_analysis import create_overlap_analysis_csv
 
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+from matplotlib.colors import to_hex
+from sklearn.decomposition import PCA
+
 # refactored to be used in shap as well - and not risk "dropping" different ones
 def get_excluded_columns():
     df_sample = pd.read_csv('pokemon.csv')
@@ -246,26 +252,118 @@ def get_dataset(image_transform=None):
 
 from sklearn.manifold import TSNE
 import plotly.express as px
+import torchvision.models as models
+import torch.nn.functional as F
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+cnn = models.mobilenet_v2(pretrained=True).features.to(device).eval()
+def extract_features(img_tensor):
+    with torch.no_grad():
+        img_tensor = img_tensor.unsqueeze(0).to(device)  # shape: (1, 3, 224, 224)
+        features = cnn(img_tensor)  # shape: (1, 1280, 7, 7)
+        pooled = F.adaptive_avg_pool2d(features, (1, 1))  # shape: (1, 1280, 1, 1)
+        return pooled.view(-1).cpu().numpy()  # shape: (1280,)
+
 
 def tsne():
-    data = get_dataset()
-    dataset = Pokemon(data)
-    
-    imgs, stats, labels = dataset
-    tsne = TSNE(n_components=18, random_state=42)
-    X_tsne = tsne.fit_transform(imgs)
-    tsne.kl_divergence_
 
 
-    fig = px.scatter(x=X_tsne[:, 0], y=X_tsne[:, 1], color=y)
-    fig.update_layout(
-        title="t-SNE visualization of Custom Classification dataset",
-        xaxis_title="First t-SNE",
-        yaxis_title="Second t-SNE",
-    )
-    fig.write_image("tsne.png")
+
+    data = get_data()  #img, stats, label
+    all_types = deencode_types()
+
+    image_features = []
+    labels = []
+
+    for img_tensor, _, label in data:
+        feat = extract_features(img_tensor)
+        image_features.append(feat)
+
+        type1_idx = label.argmax().item()
+        type1 = all_types[type1_idx]
+        labels.append(type1)
+
+    image_features = np.stack(image_features)
+    labels = np.array([t.title() for t in labels])
+
+    pca = PCA(n_components=50)
+    image_pca = pca.fit_transform(image_features)
+    tsne = TSNE(n_components=2, perplexity=30, random_state=42)
+    tsne_emb = tsne.fit_transform(image_pca)
+
+    #thank you chatgpt for making my dreams reality
+    type_colors = {
+        'Normal': "#A8A77A",
+        'Fire': "#EE8130",
+        'Water': "#6390F0",
+        'Electric': "#F7D02C",
+        'Grass': "#7AC74C",
+        'Ice': "#96D9D6",
+        'Fighting': "#C22E28",
+        'Poison': "#A33EA1",
+        'Ground': "#E2BF65",
+        'Flying': "#A98FF3",
+        'Psychic': "#F95587",
+        'Bug': "#A6B91A",
+        'Rock': "#B6A136",
+        'Ghost': "#735797",
+        'Dragon': "#6F35FC",
+        'Dark': "#705746",
+        'Steel': "#B7B7CE",
+        'Fairy': "#D685AD",
+    }
+
+    colors = [type_colors.get(t, "#000000") for t in labels]
+
+
+    plt.figure(figsize=(10, 8))
+    for t in sorted(set(labels)):
+        idxs = labels == t
+        plt.scatter(tsne_emb[idxs, 0], tsne_emb[idxs, 1], label=t, c=type_colors[t], s=10)
+
+    plt.title("t-SNE on Pokémon Stats")
+    plt.legend(loc="upper right", fontsize="small", ncol=2)
+    plt.tight_layout()
+    plt.savefig("tsne_stats_by_type.png", dpi=300)
+
 
 tsne()
+
+
+from collections import defaultdict
+
+def plot_type_distribution():
+    df = create_or_load_dataframe()
+    type_counts = defaultdict(int)
+
+    for _, row in df.iterrows():
+        t1 = row["type1"]
+        t2 = row["type2"]
+        
+        if pd.notna(t2):
+            #if th epokemon has 2 types, add for both ? idk how we want to count it otherwise
+            type_counts[t1] += 1
+            type_counts[t2] += 1
+        else:
+            type_counts[t1] += 1
+
+
+    sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
+    labels, counts = zip(*sorted_types)
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(labels, counts, color='skyblue')
+    plt.title("Number of Instances per Pokémon Type")
+    plt.xlabel("Type")
+    plt.ylabel("Instance Count (Split for Dual-Types)")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig("type_distribution.png")
+
+
+plot_type_distribution()
+
+
+
 """
 so the new code did this to the tabular data :🥲
 

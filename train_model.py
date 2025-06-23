@@ -306,5 +306,16 @@ Precision: 0.4289
 Recall:    0.3228
 F1-score:  0.3473
 AUC-ROC:   0.6426
+
+
+Janines try
+Per-label accuracy: 0.9653
+Accuracy:  0.5916
+Precision: 0.8371
+Recall:    0.7209
+F1-score:  0.7716
+AUC-ROC:   0.8538
+
+
 """
 
