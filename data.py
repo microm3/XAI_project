@@ -326,7 +326,7 @@ def tsne():
     plt.savefig("tsne_stats_by_type.png", dpi=300)
 
 
-tsne()
+#tsne()
 
 
 from collections import defaultdict
@@ -360,7 +360,7 @@ def plot_type_distribution():
     plt.savefig("type_distribution.png")
 
 
-plot_type_distribution()
+#plot_type_distribution()
 
 
 

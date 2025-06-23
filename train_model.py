@@ -51,7 +51,7 @@ def build_model(tab_dim=TAB_DIM): #might change
     return cnn, tab_net, classifier
 
 
-def train(num_epochs=150):
+def train(num_epochs=10):
     device = get_device()
     
     #some useful data maybe
@@ -130,6 +130,26 @@ def train(num_epochs=150):
 
     torch.save({'cnn_state_dict': cnn.state_dict(),'tab_net_state_dict': tab_net.state_dict(),'classifier_state_dict': classifier.state_dict(),}, 'pokemon_model.pt')
 
+from sklearn.metrics import multilabel_confusion_matrix
+import numpy as np
+import seaborn as sns
+import pandas as pd
+
+def confusion_matrix(y_true, y_pred, type_names, filename="confusion_matrix.csv"):
+    matrix = np.zeros((len(type_names), len(type_names)), dtype=int)
+
+    for true_vec, pred_vec in zip(y_true, y_pred):
+        true_idx = np.where(true_vec == 1)[0]
+        pred_idx = np.where(pred_vec == 1)[0]
+
+        for ti in true_idx:
+            for pi in pred_idx:
+                matrix[ti][pi] += 1
+
+    df = pd.DataFrame(matrix, index=type_names, columns=type_names)
+    df.to_csv(filename)
+    print(f"Saved confusion matrix to {filename}")
+    print(df)
 
 
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
@@ -179,12 +199,12 @@ def evaluate(cnn, tab_net, classifier, test_loader, device = None):
     except ValueError:
         print("AUC-ROC:   Not defined (possibly only one class present)")
 
-  
+    confusion_matrix(all_labels, all_preds, deencode_types())
     return accuracy_score(all_labels, all_preds)
 
 
 #this being a multimodal model makes loading a bit harder 
-def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
+def load_model(tab_dim=TAB_DIM, path='pokemon_model_final_maybe.pt', device=None):
     if device is None:
         device = get_device()
 
@@ -211,7 +231,7 @@ def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
 
 
 if __name__ == "__main__":
-    train(500)
+    train(200)
     cnn, tab_net, classifier = load_model()
     evaluate(cnn, tab_net, classifier, test_loader)
     # not sure why device is passed as a hard coded argument here. Letting it be a nullable argument in case needed for Janine's computer.
@@ -307,14 +327,6 @@ Recall:    0.3228
 F1-score:  0.3473
 AUC-ROC:   0.6426
 
-
-Janines try
-Per-label accuracy: 0.9653
-Accuracy:  0.5916
-Precision: 0.8371
-Recall:    0.7209
-F1-score:  0.7716
-AUC-ROC:   0.8538
 
 
 """
