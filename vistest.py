@@ -45,6 +45,14 @@ def visualize_sample(cnn, tab_net, classifier, image, tabular, label_names, true
     #img gradient map
     image_grad = image.grad.squeeze().abs().cpu().mean(dim=0).numpy()
     img_importance = np.mean(image_grad)
+
+
+    #normalize
+    total_importance = img_importance + tab_importance
+    img_contrib = img_importance / total_importance
+    tab_contrib = tab_importance / total_importance
+
+
     heatmap = (image_grad - image_grad.min()) / (image_grad.max() - image_grad.min() + 1e-8)
 
     from data import image_unpreprocess
@@ -59,9 +67,11 @@ def visualize_sample(cnn, tab_net, classifier, image, tabular, label_names, true
     axs[0].set_title("Image Gradient Map")
     axs[0].axis("off")
 
-    axs[1].bar(["Image", "Tabular"], [img_importance, tab_importance], color=['orange', 'green'])
+    axs[1].bar(["Image", "Tabular"], [img_contrib, tab_contrib], color=['orange', 'green'])
     axs[1].set_title("Modality Gradient Contribution")
-    axs[1].set_ylim(0, max(img_importance, tab_importance) * 1.2)
+    axs[1].set_ylim(0, 1.0)
+    axs[1].text(0, img_contrib + 0.02, f"{img_contrib:.2%}", ha='center')
+    axs[1].text(1, tab_contrib + 0.02, f"{tab_contrib:.2%}", ha='center')
 
     plt.tight_layout()
     plt.savefig("test_visualization.png")

@@ -252,16 +252,74 @@ def plot_hue_shift_results(results, plot_grayscal_acc=False):
     
     plt.tight_layout()
     plt.savefig(f'hue_shift_analysis_grayscale_{plot_grayscal_acc}.png', dpi=300, bbox_inches='tight')
+
+from data import deencode_types
+
+def show_prediction_under_hue_shift(df, sample_idx=0, hue_shift_deg=120, device=None):
+    """
+    Show prediction for a single Pokémon before and after hue shift.
+    Useful for checking if color changes prediction (e.g. Bulbasaur turns Fire).
+    """
+    if device is None:
+        device = get_device()
     
+    # Load model
+    cnn, classifier = load_model(path=MODEL_PATH, device=device)
+    cnn.eval()
+    classifier.eval()
+
+    # Load transforms
+    original_transform = hue_shift_transform(0)
+    shifted_transform = hue_shift_transform(hue_shift_deg)
+    
+    # Get images and labels
+    original_img, original_stats, original_label = get_sample_by_idx(df, sample_idx, original_transform)
+    shifted_img, shifted_stats, shifted_label = get_sample_by_idx(df, sample_idx, shifted_transform)
+
+    # Prepare images for display
+    def denorm(tensor_img):
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(3,1,1)
+        return torch.clamp(tensor_img * std + mean, 0, 1)
+
+    def predict(img_tensor):
+        img = img_tensor.unsqueeze(0).to(device)
+        with torch.no_grad():
+            logits = classifier(cnn(img))
+            probs = torch.sigmoid(logits)
+            pred = (probs > 0.5).float().squeeze(0).cpu()
+        return [deencode_types()[i] for i in pred.nonzero(as_tuple=True)[0].tolist()]
+
+    # Get predicted types
+    orig_pred = predict(original_img)
+    shift_pred = predict(shifted_img)
+
+    # Visualization
+    fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+
+    axs[0].imshow(denorm(original_img).permute(1, 2, 0).cpu())
+    axs[0].axis('off')
+    axs[0].set_title(f"Original\nPredicted: {', '.join(orig_pred)}")
+
+    axs[1].imshow(denorm(shifted_img).permute(1, 2, 0).cpu())
+    axs[1].axis('off')
+    axs[1].set_title(f"Hue {hue_shift_deg}°\nPredicted: {', '.join(shift_pred)}")
+
+    plt.tight_layout()
+    plt.savefig("hue_shift_single_example.png")
+    plt.show()
+
+from data import create_or_load_dataframe, tab_preprocess
 if __name__ == "__main__":
-    # df = create_or_load_dataframe()
-    # df = tab_preprocess(df)
+    df = create_or_load_dataframe()
+    df = tab_preprocess(df)
     # save_hue_shift_examples(df)
 
-    results = analyze_hue_dependency()
-    
-    plot_hue_shift_results(results, plot_grayscal_acc=True)
-    plot_hue_shift_results(results, plot_grayscal_acc=False)
+    #results = analyze_hue_dependency()
+    # Blue → red
+    show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=120)
+    #plot_hue_shift_results(results, plot_grayscal_acc=True)
+    #plot_hue_shift_results(results, plot_grayscal_acc=False)
     
 
 
@@ -286,3 +344,7 @@ hue_shift_300   0.2599       55.0
 hue_shift_330   0.4432       23.3        
 hue_shift_360   0.5800       -0.4     
 """
+
+
+
+
