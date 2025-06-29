@@ -317,7 +317,7 @@ if __name__ == "__main__":
 
     #results = analyze_hue_dependency()
     # Blue → red
-    show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=120)
+    show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=200)
     #plot_hue_shift_results(results, plot_grayscal_acc=True)
     #plot_hue_shift_results(results, plot_grayscal_acc=False)
     
