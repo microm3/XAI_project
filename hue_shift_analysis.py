@@ -8,6 +8,8 @@ from train_model_iso_img import load_model, evaluate
 import warnings
 import os
 import matplotlib.pyplot as plt
+from data import create_or_load_dataframe, tab_preprocess
+import pandas as pd
 warnings.filterwarnings('ignore')
 
 
@@ -309,7 +311,96 @@ def show_prediction_under_hue_shift(df, sample_idx=0, hue_shift_deg=120, device=
     plt.savefig("hue_shift_single_example.png")
     plt.show()
 
-from data import create_or_load_dataframe, tab_preprocess
+
+
+# same as in train_model_iso_img.evaluate, but modified for types 
+def evaluate_per_type(cnn, classifier, test_loader, device):
+    cnn.eval()
+    classifier.eval()
+    
+    all_preds = []
+    all_labels = []
+
+    with torch.no_grad():
+        for images, stats, labels in test_loader:
+            images, stats, labels = images.to(device), stats.to(device), labels.to(device)
+
+            image_feats = cnn(images)
+            combined = image_feats  # Same as in the original evaluate function
+            outputs = classifier(combined)
+
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).float()
+
+            all_preds.append(preds.cpu())
+            all_labels.append(labels.cpu())
+
+    all_preds = torch.cat(all_preds).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+
+    # type specific 
+    type_accuracies = []
+    for type_idx in range(all_labels.shape[1]):
+        type_preds = all_preds[:, type_idx]
+        type_labels = all_labels[:, type_idx]
+        
+        # calculate accuracy for samples that have this type 
+        type_mask = type_labels == 1
+        if type_mask.sum() > 0:
+            type_accuracy = (type_preds[type_mask] == type_labels[type_mask]).mean()
+        else:
+            type_accuracy = 0
+        
+        type_accuracies.append(type_accuracy)
+    
+    return type_accuracies
+
+def analyze_type_color_dependency():
+    device = get_device()
+    cnn, classifier = load_model(path=MODEL_PATH, device=device)
+    
+    all_types = deencode_types()
+    type_results = {type_name: [] for type_name in all_types}
+    
+    for shift_name, shift_degrees in hue_shifts.items():
+        hue_shifted_loader = create_hue_shifted_dataloader(shift_degrees)
+        
+        type_accuracies = evaluate_per_type(cnn, classifier, hue_shifted_loader, device)
+        
+        for type_idx, type_name in enumerate(all_types):
+            type_results[type_name].append({
+                'hue_shift': shift_degrees,
+                'accuracy': type_accuracies[type_idx],
+                'shift_name': shift_name
+            })
+    
+    color_dependency_results = []
+    
+    for type_name in all_types:
+        type_data = type_results[type_name]
+        original_acc = next(d['accuracy'] for d in type_data if d['hue_shift'] == 0)
+        
+        if original_acc > 0: 
+            shifted_accs = [d['accuracy'] for d in type_data if d['hue_shift'] != 0]
+            avg_shifted_acc = np.mean(shifted_accs)
+            
+            worst_shift_data = min(type_data, key=lambda x: x['accuracy'] if x['hue_shift'] != 0 else float('inf'))
+            
+            color_dependency_results.append({
+                'type': type_name,
+                'original_accuracy': original_acc,
+                'avg_shifted_accuracy': avg_shifted_acc,
+                'worst_hue_shift': worst_shift_data['hue_shift'],
+                'worst_accuracy': worst_shift_data['accuracy'],
+                'accuracy_drop_worst': original_acc - worst_shift_data['accuracy']
+            })
+            
+
+    color_dependency_df = pd.DataFrame(color_dependency_results)
+    color_dependency_df.to_csv('hue_shift_colour_dependency_per_type_results.csv', index=False)
+
+
+
 if __name__ == "__main__":
     df = create_or_load_dataframe()
     df = tab_preprocess(df)
@@ -317,10 +408,11 @@ if __name__ == "__main__":
 
     #results = analyze_hue_dependency()
     # Blue → red
-    show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=200)
+    # show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=120)
     #plot_hue_shift_results(results, plot_grayscal_acc=True)
     #plot_hue_shift_results(results, plot_grayscal_acc=False)
     
+    analyze_type_color_dependency()
 
 
 """
