@@ -204,7 +204,7 @@ def evaluate(cnn, tab_net, classifier, test_loader, device = None):
 
 
 #this being a multimodal model makes loading a bit harder 
-def load_model(tab_dim=TAB_DIM, path='pokemon_model_final_maybe.pt', device=None):
+def load_model(tab_dim=TAB_DIM, path='pokemon_model.pt', device=None):
     if device is None:
         device = get_device()
 
