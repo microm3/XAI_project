@@ -10,12 +10,9 @@ from PIL import Image
 import re
 from torch.utils.data import Dataset
 from torch.utils.data import random_split
-from overlap_analysis import create_overlap_analysis_csv
-
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
-from matplotlib.colors import to_hex
 from sklearn.decomposition import PCA
 
 # refactored to be used in shap as well - and not risk "dropping" different ones
@@ -84,8 +81,6 @@ def create_or_load_dataframe():
                 # TODO abilities is not included (for now), either include later or comment in report on why it was not.
                 "stats": {k: clean_stat(v) for k, v in row.drop(get_excluded_columns()).items()}
             })
-
-    create_overlap_analysis_csv(df, image_root)
 
     combined_df = pd.DataFrame(dataset)
     combined_df.to_pickle(pickle_path)  #pickleee
@@ -195,43 +190,6 @@ class Pokemon(Dataset):
     def __getitem__(self, idx):
         image, stats, label = self.data[idx]
         return image, stats, label
-
-# version that splits by Pokemon, not by individual images
-# def get_dataset():
-#     df = create_or_load_dataframe()
-#     df = tab_preprocess(df)
-    
-#     unique_pokemon = df['pokemon_name'].unique()
-    
-#     # split by pokemon names
-#     torch.manual_seed(42)
-#     pokemon_indices = torch.randperm(len(unique_pokemon))
-#     train_size = int(0.8 * len(unique_pokemon))
-    
-#     train_pokemon = set(unique_pokemon[pokemon_indices[:train_size]])
-#     test_pokemon = set(unique_pokemon[pokemon_indices[train_size:]])
-    
-#     print(f"Train Pokemon: {len(train_pokemon)}, Test Pokemon: {len(test_pokemon)}")
-    
-#     train_data = []
-#     test_data = []
-    
-#     for idx in range(len(df)):
-#         image, stats, label = get_sample_by_idx(df, idx, image_preprocess())
-#         pokemon_name = df.iloc[idx]['pokemon_name']
-        
-#         if pokemon_name in train_pokemon:
-#             train_data.append((image, stats, label))
-#         else:
-#             test_data.append((image, stats, label))
-    
-#     train_dataset = Pokemon(train_data)
-#     test_dataset = Pokemon(test_data)
-    
-#     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-#     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
-    
-#     return train_loader, test_loader
 
 # old version. potential data leakage
 # NOTE PUBLIC
