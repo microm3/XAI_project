@@ -293,23 +293,34 @@ def show_prediction_under_hue_shift(df, sample_idx=0, hue_shift_deg=120, device=
         return [deencode_types()[i] for i in pred.nonzero(as_tuple=True)[0].tolist()]
 
     # Get predicted types
-    orig_pred = predict(original_img)
-    shift_pred = predict(shifted_img)
+    results = []
+    for shift_name, shift_deg in hue_shifts.items():
+        transform = hue_shift_transform(shift_deg)
+        img, stats, label = get_sample_by_idx(df, sample_idx, transform)
+        pred_types = predict(img)
+        results.append((shift_name, shift_deg, pred_types, img))
 
-    # Visualization
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+    #table
+    print(f"\n{'Shift Name':<15} {'Deg':<5} Predicted Types")
+    print("-" * 50)
+    for name, deg, preds, _ in results:
+        print(f"{name:<15} {deg:<5} {', '.join(preds) or '—'}")
 
-    axs[0].imshow(denorm(original_img).permute(1, 2, 0).cpu())
-    axs[0].axis('off')
-    axs[0].set_title(f"Original\nPredicted: {', '.join(orig_pred)}")
 
-    axs[1].imshow(denorm(shifted_img).permute(1, 2, 0).cpu())
-    axs[1].axis('off')
-    axs[1].set_title(f"Hue {hue_shift_deg}°\nPredicted: {', '.join(shift_pred)}")
-
+    n = len(results)
+    cols = 4
+    rows = (n + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(cols*3, rows*3))
+    axes = axes.flatten()
+    for ax, (name, deg, preds, img) in zip(axes, results):
+        ax.imshow(denorm(img).permute(1,2,0).cpu())
+        ax.axis('off')
+        ax.set_title(f"{name}\n{deg}° → {', '.join(preds)}", fontsize=8)
+      
+    for ax in axes[n:]:
+        ax.axis('off')
     plt.tight_layout()
-    plt.savefig("hue_shift_single_example.png")
-    plt.show()
+    plt.savefig("hueshiftall.png")
 
 
 
