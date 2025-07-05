@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from data import get_dataset
 from train_model_iso_img import load_model, evaluate, get_device
-from XAI_project.XAI_hue_shift_analysis import MODEL_PATH, hue_shifts, create_hue_shifted_dataloader
+from XAI_hue_shift_analysis import MODEL_PATH, hue_shifts, create_hue_shifted_dataloader
 from sklearn.metrics import accuracy_score
 import warnings
 

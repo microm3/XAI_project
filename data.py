@@ -14,10 +14,13 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from pathlib import Path
+
+
 
 # refactored to be used in shap as well - and not risk "dropping" different ones
 def get_excluded_columns():
-    df_sample = pd.read_csv('pokemon.csv')
+    df_sample = pd.read_csv('dataset/pokemon.csv')
     
     excluded = ["name", "type1", "type2", "japanese_name", "classfication", "abilities"]    
     against_cols = [col for col in df_sample.columns if col.startswith("against_")]
@@ -38,52 +41,41 @@ def clean_stat(val):
     return float(val)
 
 def create_or_load_dataframe():
-    pickle_path = "combined_dataset.pkl"
-    if os.path.exists(pickle_path):
+    pickle_path = Path("combined_dataset.pkl")
+    if pickle_path.exists():
         return pd.read_pickle(pickle_path)
 
-    csv_path = "pokemon.csv"
+    csv_path = Path("dataset/pokemon.csv")
     df = pd.read_csv(csv_path)
-
-    all_types = sorted(set(df['type1']) | set(df['type2'].dropna()))
-    
-    # normalize names just in case
     df['name'] = df['name'].apply(normalize)
+    all_types = sorted(set(df['type1']) | set(df['type2'].dropna()))
 
-    image_root = "pokemon_sprites/"
-    available_folders = {normalize(folder): folder for folder in os.listdir(image_root) if os.path.isdir(os.path.join(image_root, folder))}
+    image_root = Path("dataset/pokemon_sprites")
+    # map normalized folder name → actual Path
+    available = {normalize(p.name): p for p in image_root.iterdir() if p.is_dir()}
 
-    dataset = []
-
+    records = []
     for _, row in df.iterrows():
-        pokemon_name = row['name']  # already normalized
-        if pokemon_name not in available_folders:
-            print(f"Missing: {pokemon_name}")
+        nm = row['name']
+        folder = available.get(nm)
+        if folder is None:
+            print(f"Missing folder for {nm}")
             continue
 
-        folder_name = available_folders[pokemon_name]
-        pokemon_folder = os.path.join(image_root, folder_name)
-
-        for fname in os.listdir(pokemon_folder):
-            full_image_path = os.path.join(pokemon_folder, fname)
-
-            dataset.append({
-                "image_path": full_image_path,
-                "pokemon_name": pokemon_name,  # ADD THIS - for proper Pokemon-based splitting
-                
-                # store encoded types in dataframe, instead of encoding for each sample
+        for img_file in folder.iterdir():
+            if img_file.suffix.lower() not in {'.png','.jpg','.jpeg'}:
+                continue
+            records.append({
+                "image_path": img_file,         # store as Path
+                "pokemon_name": nm,
                 "encoded_types": encode_types(row["type1"], row["type2"], all_types),
-                
-                # keep raw types for reference/debugging if needed
                 "type1": row["type1"],
                 "type2": row["type2"],
-                
-                # TODO abilities is not included (for now), either include later or comment in report on why it was not.
-                "stats": {k: clean_stat(v) for k, v in row.drop(get_excluded_columns()).items()}
+                "stats": {k: clean_stat(v) for k,v in row.drop(get_excluded_columns()).items()}
             })
 
-    combined_df = pd.DataFrame(dataset)
-    combined_df.to_pickle(pickle_path)  #pickleee
+    combined_df = pd.DataFrame(records)
+    combined_df.to_pickle(pickle_path)
     return combined_df
 
 
@@ -146,14 +138,16 @@ def deencode_types():
 #samples a single image + types + stats
 def get_sample_by_idx(df, idx, tfm):
     row = df.iloc[idx]
-
-    image = Image.open(row["image_path"])
-    
+    img_path = row["image_path"]
+    if not Path(img_path).is_file():
+        raise FileNotFoundError(f"Could not find image at {img_path}")
+    # :() totally not some hardcoded solution to a stupid thing
+    if img_path.name.lower() == "bulbasaur.png":
+        img_path = img_path.with_name("bulbasaur_1.png")
+    image = Image.open(str(img_path))
     image = tfm(image)
-
     tab = torch.tensor(row["scaled_stats"], dtype=torch.float32)
     label = row["encoded_types"]
-
     return image, tab, label
 
 """

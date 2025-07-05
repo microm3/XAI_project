@@ -418,12 +418,12 @@ if __name__ == "__main__":
     # save_hue_shift_examples(df)
 
     #results = analyze_hue_dependency()
-    # Blue → red
-    # show_prediction_under_hue_shift(df, sample_idx=3, hue_shift_deg=120)
+
+    show_prediction_under_hue_shift(df, sample_idx=1, hue_shift_deg=120)
     #plot_hue_shift_results(results, plot_grayscal_acc=True)
     #plot_hue_shift_results(results, plot_grayscal_acc=False)
     
-    analyze_type_color_dependency()
+    #analyze_type_color_dependency()
 
 
 """
